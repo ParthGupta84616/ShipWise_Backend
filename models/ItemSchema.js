@@ -18,6 +18,11 @@ const ItemDataSchema = new mongoose.Schema({
   productDetails: { type: String, default: null },
   unitOfMeasurement: { type: String, default: null },
   unitOfWeight: { type: String, default: null },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  createdAt: { type: Date, default: Date.now },
+  lastUpdated: { type: Date },
+  lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
 });
+
 
 module.exports = mongoose.model("ItemData", ItemDataSchema);

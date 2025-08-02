@@ -10,7 +10,7 @@ const {
     forgotPasswordController,
     resetPasswordController,
     signoutController,
-    checkVerifiedController // add this
+    checkVerifiedController,
 } = require('../controllers/auth.controller');
 
 // Load Middleware

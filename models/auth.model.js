@@ -42,6 +42,14 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^\+?[1-9]\d{1,14}$/, 'Please provide a valid phone number']
     },
+    company: {
+      type: String,
+      default: ''
+    },
+    address: {
+      type: String,
+      default: ''
+    },
     isActive: {
       type: Boolean,
       default: false

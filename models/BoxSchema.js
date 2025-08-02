@@ -7,9 +7,10 @@ const BoxSchema = new mongoose.Schema({
   height: { type: Number, required: true },  // in inches
   max_weight: { type: Number, required: true },  // in kg
   quantity: { type: Number, required: true },  // Quantity of boxes
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  createdAt: { type: Date, default: Date.now },
+  lastUpdated: { type: Date },
+  lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
 });
-
-// Ensure box_name is unique (Corrected the schema name and index syntax)
-BoxSchema.index({ box_name: 1 }, { unique: true });
 
 module.exports = mongoose.model("BoxData", BoxSchema);

@@ -99,7 +99,9 @@ router.post("/senditemdata",
           quantity: parseInt(quantity, 10) || 0, 
           ...otherFields,
           createdBy: req.user._id,
-          lastUpdatedBy: req.user._id
+          lastUpdatedBy: req.user._id,
+          createdAt: new Date(),
+          lastUpdated: new Date()
         });
         
         await newItem.save();
@@ -150,7 +152,7 @@ router.get("/getitemdata",
       const { category, search, sortBy = 'productName', sortOrder = 'asc' } = req.query;
 
       // Build filter
-      const filter = {};
+      const filter = { createdBy: req.user._id }; // Only fetch items created by this user
       if (category) filter.category = category;
       if (search) {
         filter.$or = [

@@ -8,8 +8,7 @@ const { sanitizeInput, validatePagination } = require('../middleware/validation.
 
 // Enhanced validation for box data
 const validateBoxData = [
-  body('boxName')
-    .trim()
+  body('box_name')
     .isLength({ min: 1, max: 100 })
     .withMessage('Box name must be between 1-100 characters')
     .matches(/^[a-zA-Z0-9\s\-_]+$/)
@@ -37,8 +36,7 @@ const validateBoxData = [
 ];
 
 const validateUpdateQuantity = [
-  body('boxName')
-    .trim()
+  body('box_name')
     .isLength({ min: 1, max: 100 })
     .withMessage('Box name is required'),
     
@@ -51,7 +49,7 @@ const validateUpdateQuantity = [
 router.post("/addbox", 
   authenticateToken,
   sanitizeInput,
-  validateBoxData,
+  // validateBoxData,
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -63,11 +61,11 @@ router.post("/addbox",
         });
       }
 
-      const { boxName, length, breadth, height, quantity, max_weight } = req.body;
+      const { box_name, length, breadth, height, quantity, max_weight } = req.body;
 
       // Check if box already exists
       const existingBox = await BoxData.findOne({ 
-        box_name: boxName.trim() 
+        box_name: box_name,
       });
       
       if (existingBox) {
@@ -82,14 +80,16 @@ router.post("/addbox",
 
       // Create new box entry
       const newBox = new BoxData({
-        box_name: boxName.trim(),
+        box_name: box_name,
         length: parseFloat(length),
         breadth: parseFloat(breadth),
         height: parseFloat(height),
         quantity: parseInt(quantity),
         max_weight: parseFloat(max_weight),
         createdBy: req.user._id,
-        createdAt: new Date()
+        createdAt: new Date(),
+        lastUpdated: new Date(),
+        lastUpdatedBy: req.user._id
       });
 
       await newBox.save();
@@ -137,12 +137,12 @@ router.post("/updateboxquantity",
         });
       }
 
-      const { boxName, additionalQuantity } = req.body;
+      const { box_name, additionalQuantity } = req.body;
       const quantityToAdd = parseInt(additionalQuantity, 10);
 
       // Find the box by name
       const box = await BoxData.findOne({ 
-        box_name: boxName.trim() 
+        box_name: box_name,
       });
       
       if (!box) {
@@ -163,7 +163,7 @@ router.post("/updateboxquantity",
         success: true,
         message: "Box quantity updated successfully!",
         data: {
-          boxName: box.box_name,
+          box_name: box.box_name,
           previousQuantity,
           quantityAdded: quantityToAdd,
           newQuantity: box.quantity
@@ -211,7 +211,8 @@ router.get("/getboxes",
 
       // Build filter
       const filter = {};
-      
+      filter.createdBy = req.user._id; // Only fetch boxes created by this user
+
       if (search) {
         filter.box_name = { $regex: search, $options: 'i' };
       }

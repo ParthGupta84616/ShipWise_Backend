@@ -53,7 +53,7 @@ exports.updateController = async (req, res) => {
             });
         }
 
-        const { name, password, email, phone } = req.body;
+        const { name, phone, address, company } = req.body;
         const userId = req.user._id;
 
         // Find user
@@ -64,44 +64,23 @@ exports.updateController = async (req, res) => {
                 message: 'User not found'
             });
         }
+        console.log(
+            name, phone, address, company, userId
+        )
 
-        // Prepare update object
         const updateData = {};
 
-        // Update name if provided
         if (name && name.trim()) {
             updateData.name = name.trim();
         }
-
-        // Update email if provided and different
-        if (email && email !== user.email) {
-            const existingUser = await User.findOne({ email, _id: { $ne: userId } });
-            if (existingUser) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Email already exists'
-                });
-            }
-            updateData.email = email.toLowerCase();
-        }
-
-        // Update phone if provided
         if (phone) {
             updateData.phone = phone;
         }
-
-        // Update password if provided
-        if (password) {
-            if (password.length < 6) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Password must be at least 6 characters long'
-                });
-            }
-            
-            const salt = await bcrypt.genSalt(12);
-            updateData.hashed_password = await bcrypt.hash(password, salt);
-            updateData.salt = salt;
+        if (address !== undefined) {
+            updateData.address = address;
+        }
+        if (company !== undefined) {
+            updateData.company = company;
         }
 
         // Update user
