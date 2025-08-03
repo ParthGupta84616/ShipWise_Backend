@@ -110,7 +110,7 @@ exports.activationController = async (req, res) => {
     const user = await User.findOne({
       activationToken: token,
       activationTokenExpiry: { $gt: new Date() },
-      isActive: false
+      emailVerified: false
     });
 
     if (!user) {
@@ -121,7 +121,7 @@ exports.activationController = async (req, res) => {
     }
 
     // Activate user
-    user.isActive = true;
+    user.emailVerified = true;
     user.activationToken = undefined;
     user.activationTokenExpiry = undefined;
     await user.save();
