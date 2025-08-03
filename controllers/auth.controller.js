@@ -204,7 +204,9 @@ exports.signinController = async (req, res) => {
           email: user.email,
           role: user.role,
           phone: user.phone,
-          lastLogin: user.lastLogin
+          lastLogin: user.lastLogin,
+          company : user.company,
+          address : user.address,
         }
       }
     });
