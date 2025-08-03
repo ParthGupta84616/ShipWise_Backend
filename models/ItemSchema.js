@@ -21,8 +21,8 @@ const ItemDataSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   createdAt: { type: Date, default: Date.now },
   lastUpdated: { type: Date },
-  lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+  lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  deletedAt: { type: Date, default: null } 
 });
-
 
 module.exports = mongoose.model("ItemData", ItemDataSchema);

@@ -149,10 +149,10 @@ router.get("/getitemdata",
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
       
-      const { category, search, sortBy = 'productName', sortOrder = 'asc' } = req.query;
+      const { category, search, sortBy = 'productName', sortOrder = 'asc', includeDeleted } = req.query;
 
       // Build filter
-      const filter = { createdBy: req.user._id }; // Only fetch items created by this user
+      const filter = { createdBy: req.user._id };
       if (category) filter.category = category;
       if (search) {
         filter.$or = [
@@ -160,6 +160,10 @@ router.get("/getitemdata",
           { brand: { $regex: search, $options: 'i' } },
           { productDetails: { $regex: search, $options: 'i' } }
         ];
+      }
+      // Only exclude deleted items if not explicitly requested
+      if (!includeDeleted || includeDeleted === "false") {
+        filter.deletedAt = null;
       }
 
       // Build sort
@@ -175,6 +179,8 @@ router.get("/getitemdata",
         ItemData.countDocuments(filter)
       ]);
 
+      const dailyData = await getDailyTransaction(req.user._id);
+
       return res.status(200).json({
         success: true,
         message: "Items retrieved successfully",
@@ -187,8 +193,10 @@ router.get("/getitemdata",
             itemsPerPage: limit,
             hasNextPage: page < Math.ceil(total / limit),
             hasPrevPage: page > 1
-          }
+          },
+          dailyData: dailyData.data
         }
+        
       });
     } catch (error) {
       console.error("Error fetching items:", error);
@@ -225,18 +233,20 @@ router.get("/getitem/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// Delete item
+// Soft-delete item
 router.delete("/deleteitem/:id", authenticateToken, async (req, res) => {
   try {
-    const item = await ItemData.findByIdAndDelete(req.params.id);
-    
+    const item = await ItemData.findByIdAndUpdate(
+      req.params.id,
+      { deletedAt: new Date(), lastUpdated: new Date(), lastUpdatedBy: req.user._id },
+      { new: true }
+    );
     if (!item) {
       return res.status(404).json({
         success: false,
         message: "Item not found"
       });
     }
-
     res.status(200).json({
       success: true,
       message: "Item deleted successfully"
@@ -250,4 +260,105 @@ router.delete("/deleteitem/:id", authenticateToken, async (req, res) => {
   }
 });
 
+
+
+router.get("/daily-transaction", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user._id;
+    
+    // Get all items created by user with createdAt field
+    const counts = await ItemData.aggregate([
+      { 
+        $match: { 
+          createdBy: typeof userId === "string" ? require("mongoose").Types.ObjectId(userId) : userId,
+          createdAt: { $exists: true }
+        } 
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          quantity: { $sum: "$quantity" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+
+    // Create a map for easy lookup
+    const dataMap = {};
+    counts.forEach(item => {
+      const date = new Date(item._id);
+      const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+      dataMap[dayName] = (dataMap[dayName] || 0) + item.quantity;
+    });
+
+    // Return data in Monday-Sunday order
+    const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const result = orderedDays.map(day => ({
+      day: day,
+      quantity: dataMap[day] || 0
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: "Daily quantity created for last 7 days retrieved successfully",
+      data: result
+    });
+  } catch (error) {
+    console.error("Error fetching last 7 days daily quantity:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch last 7 days daily quantity", error: error.message });
+  }
+});
+
+async function getDailyTransaction(userId) {
+  try {
+    const userObjectId = typeof userId === "string" ? mongoose.Types.ObjectId(userId) : userId;
+
+    const counts = await ItemData.aggregate([
+      {
+        $match: {
+          createdBy: userObjectId,
+          createdAt: { $exists: true }
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          quantity: { $sum: "$quantity" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+
+    const dataMap = {};
+    counts.forEach(item => {
+      const date = new Date(item._id);
+      const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+      dataMap[dayName] = (dataMap[dayName] || 0) + item.quantity;
+    });
+
+    const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const result = orderedDays.map(day => ({
+      day: day,
+      quantity: dataMap[day] || 0
+    }));
+
+    return {
+      success: true,
+      message: "Daily quantity created for last 7 days retrieved successfully",
+      data: result
+    };
+  } catch (error) {
+    console.error("Error fetching daily quantity:", error);
+    return {
+      success: false,
+      message: "Failed to fetch daily quantity",
+      error: error.message
+    };
+  }
+}
+
+
 module.exports = router;
+      
