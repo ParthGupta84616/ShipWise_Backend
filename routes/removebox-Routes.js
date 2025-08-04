@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const BoxData = require("../models/BoxSchema");
+const ItemData = require("../models/ItemSchema");
+const DailyPacked = require("../models/DailyPackedSchema");
 
 const { authenticateToken } = require('../middleware/auth.middleware');
 const { sanitizeInput } = require('../middleware/validation.middleware');
@@ -97,6 +99,111 @@ router.post("/removebox",
       res.status(500).json({ 
         success: false,
         message: "Internal server error while removing box" 
+      });
+    }
+  }
+);
+
+/**
+ * Remove boxes and items together.
+ * POST /removeboxitem
+ * Body: { boxId, itemId, boxQuantity, itemQuantity }
+ * - Decrements box and item quantities.
+ * - If any becomes 0, sets deletedAt to now and removes from collection.
+ */
+router.post("/removeboxitem",
+  authenticateToken,
+  sanitizeInput,
+  async (req, res) => {
+    try {
+      const { boxId, itemId, boxQuantity, itemQuantity } = req.body;
+
+      if (!boxId || !itemId || !boxQuantity || !itemQuantity) {
+        return res.status(400).json({
+          success: false,
+          message: "boxId, itemId, boxQuantity, and itemQuantity are required"
+        });
+      }
+
+      // Find box and item
+      const box = await BoxData.findById(boxId);
+      const item = await ItemData.findById(itemId);
+
+      if (!box) {
+        return res.status(404).json({ success: false, message: "Box not found" });
+      }
+      if (!item) {
+        return res.status(404).json({ success: false, message: "Item not found" });
+      }
+
+      // Check if enough quantity exists
+      if (box.quantity < Number(boxQuantity)) {
+        return res.status(400).json({ success: false, message: "Insufficient box quantity" });
+      }
+      if (item.quantity < Number(itemQuantity)) {
+        return res.status(400).json({ success: false, message: "Insufficient item quantity" });
+      }
+
+      // Decrement quantities
+      box.quantity -= Number(boxQuantity);
+      item.quantity -= Number(itemQuantity);
+
+      const now = new Date();
+      let boxDeleted = false, itemDeleted = false;
+
+      // If box quantity is 0, set deletedAt and remove
+      if (box.quantity === 0) {
+        box.deletedAt = now;
+        await BoxData.findByIdAndDelete(box._id);
+        boxDeleted = true;
+      } else {
+        await box.save();
+      }
+
+      // If item quantity is 0, set deletedAt and remove
+      if (item.quantity === 0) {
+        item.deletedAt = now;
+        await ItemData.findByIdAndDelete(item._id);
+        itemDeleted = true;
+      } else {
+        await item.save();
+      }
+
+      // --- INTEGRATE DailyPacked increment here ---
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const packedDoc = await DailyPacked.findOne({ user: req.user._id, date: todayStr });
+      const packedCount = Number(itemQuantity);
+      if (packedDoc) {
+        await DailyPacked.updateOne(
+          { user: req.user._id, date: todayStr },
+          { $inc: { count: packedCount } }
+        );
+      } else {
+        await DailyPacked.create({
+          user: req.user._id,
+          date: todayStr,
+          count: packedCount
+        });
+      }
+      // --- END DailyPacked increment ---
+
+      return res.status(200).json({
+        success: true,
+        message: "Box and item quantities updated successfully",
+        data: {
+          boxId,
+          itemId,
+          boxDeleted,
+          itemDeleted,
+          boxRemaining: boxDeleted ? 0 : box.quantity,
+          itemRemaining: itemDeleted ? 0 : item.quantity
+        }
+      });
+    } catch (error) {
+      console.error("Error removing box and item:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error while removing box and item"
       });
     }
   }
