@@ -60,33 +60,31 @@ router.post("/senditemdata",
         });
       }
 
-      const { productName, quantity = 0, ...otherFields } = req.body;
+      const { productName, quantity, weight, price, brand, dimensions, category, shape, productDetails, unitOfMeasurement, unitOfWeight } = req.body;
 
-      // Check if the item exists
+      // Find the item by productName
       let item = await ItemData.findOne({ productName: productName.trim() });
 
       if (item) {
-        // Update quantity and other fields
-        const quantityToAdd = parseInt(quantity, 10) || 0;
-        item.quantity = (item.quantity || 0) + quantityToAdd;
-        
-        // Update other non-null fields
-        Object.keys(otherFields).forEach((key) => {
-          if (otherFields[key] !== null && otherFields[key] !== undefined && otherFields[key] !== '') {
-            if (key === 'dimensions' && typeof otherFields[key] === 'object') {
-              item.dimensions = { ...item.dimensions, ...otherFields[key] };
-            } else {
-              item[key] = otherFields[key];
-            }
-          }
-        });
-        
-        // Add user info for tracking
+        // Update only provided fields
+        if (quantity !== undefined) item.quantity = quantity;
+        if (weight !== undefined) item.weight = weight;
+        if (price !== undefined) item.price = price;
+        if (brand !== undefined) item.brand = brand;
+        if (category !== undefined) item.category = category;
+        if (shape !== undefined) item.shape = shape;
+        if (productDetails !== undefined) item.productDetails = productDetails;
+        if (unitOfMeasurement !== undefined) item.unitOfMeasurement = unitOfMeasurement;
+        if (unitOfWeight !== undefined) item.unitOfWeight = unitOfWeight;
+        if (dimensions && typeof dimensions === 'object') {
+          item.dimensions = { ...item.dimensions, ...dimensions };
+        }
+
         item.lastUpdatedBy = req.user._id;
         item.lastUpdated = new Date();
-        
+
         await item.save();
-        
+
         return res.status(200).json({ 
           success: true,
           message: "Item updated successfully!", 
@@ -96,16 +94,24 @@ router.post("/senditemdata",
         // Create a new item
         const newItem = new ItemData({ 
           productName: productName.trim(), 
-          quantity: parseInt(quantity, 10) || 0, 
-          ...otherFields,
+          quantity: quantity !== undefined ? quantity : 0,
+          weight,
+          price,
+          brand,
+          dimensions,
+          category,
+          shape,
+          productDetails,
+          unitOfMeasurement,
+          unitOfWeight,
           createdBy: req.user._id,
           lastUpdatedBy: req.user._id,
           createdAt: new Date(),
           lastUpdated: new Date()
         });
-        
+
         await newItem.save();
-        
+
         return res.status(201).json({ 
           success: true,
           message: "Item added successfully!", 
@@ -114,14 +120,14 @@ router.post("/senditemdata",
       }
     } catch (error) {
       console.error("Error in senditemdata:", error);
-      
+
       if (error.code === 11000) {
         return res.status(409).json({ 
           success: false,
           message: "Item with this name already exists" 
         });
       }
-      
+
       return res.status(500).json({ 
         success: false,
         message: "Failed to save or update item" 
@@ -312,7 +318,7 @@ router.get("/daily-transaction", authenticateToken, async (req, res) => {
 
 async function getDailyTransaction(userId) {
   try {
-    const userObjectId = typeof userId === "string" ? mongoose.Types.ObjectId(userId) : userId;
+    const userObjectId = typeof userId === "string" ? require("mongoose").Types.ObjectId(userId) : userId;
 
     const counts = await ItemData.aggregate([
       {
@@ -338,7 +344,19 @@ async function getDailyTransaction(userId) {
       dataMap[dayName] = (dataMap[dayName] || 0) + item.quantity;
     });
 
-    const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    // Get today's day name
+    const todayIdx = new Date().getDay();
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Order: Monday, ..., Sunday, but move today to the end
+    let orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const todayName = daysOfWeek[todayIdx];
+    // Remove today from its position and push to end if it's in orderedDays
+    const idx = orderedDays.indexOf(todayName);
+    if (idx !== -1) {
+      orderedDays.splice(idx, 1);
+      orderedDays.push(todayName);
+    }
+
     const result = orderedDays.map(day => ({
       day: day,
       quantity: dataMap[day] || 0
@@ -361,4 +379,4 @@ async function getDailyTransaction(userId) {
 
 
 module.exports = router;
-      
+

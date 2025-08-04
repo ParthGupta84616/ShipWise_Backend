@@ -345,4 +345,54 @@ router.delete("/deletebox/:id",
   }
 );
 
+// Update box details endpoint
+router.put("/updatebox", authenticateToken, sanitizeInput, async (req, res) => {
+  try {
+    const { id, box_name, length, breadth, height, quantity, max_weight } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Box id is required"
+      });
+    }
+
+    // Build update object with only provided fields
+    const update = {};
+    if (box_name !== undefined) update.box_name = box_name;
+    if (length !== undefined) update.length = length;
+    if (breadth !== undefined) update.breadth = breadth;
+    if (height !== undefined) update.height = height;
+    if (quantity !== undefined) update.quantity = quantity;
+    if (max_weight !== undefined) update.max_weight = max_weight;
+    update.lastUpdated = new Date();
+    update.lastUpdatedBy = req.user._id;
+
+    const box = await BoxData.findByIdAndUpdate(
+      id,
+      { $set: update },
+      { new: true }
+    );
+
+    if (!box) {
+      return res.status(404).json({
+        success: false,
+        message: "Box not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Box updated successfully",
+      data: box
+    });
+  } catch (error) {
+    console.error("Error updating box:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update box"
+    });
+  }
+});
+
 module.exports = router;
