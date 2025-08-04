@@ -60,14 +60,13 @@ async function cleanupFile(filePath) {
   }
 }
 
-// Predict item dimensions from image
-router.post('/predict-dimensions', 
+router.post('/predict-dimensions',
   authenticateToken,
   upload.single('image'),
   sanitizeInput,
   async (req, res) => {
     let filePath = null;
-    
+
     try {
       if (!req.file) {
         return res.status(400).json({
@@ -99,37 +98,33 @@ router.post('/predict-dimensions',
       const imagePart = await fileToGenerativePart(filePath, req.file.mimetype);
 
       // Create detailed prompt for dimension prediction
-      const prompt = `Analyze this image and predict the dimensions of the main object/item. 
+      const prompt = `Analyze this image and predict the following product details:
 
 Requirements:
-1. Identify the main object in the image
-2. Estimate its length, width/breadth, and height in ${unit}
-3. Consider any reference objects if visible${referenceObject ? ` (Reference: ${referenceObject})` : ''}
-4. Provide confidence level for your estimates
-5. Identify the shape category (cube, cuboid, cylinder, sphere, irregular)
-6. Estimate weight if possible based on material appearance
-
-${additionalContext ? `Additional context: ${additionalContext}` : ''}
+1. Identify the product name (main object in the image)
+2. Estimate its length, breadth (width), and height in centimeters (cm)
+3. Estimate its weight in grams (g)
+4. Identify the product category (e.g., electronics, apparel, etc.)
+5. Provide confidence level for your estimates
+6. If uncertain, indicate lower confidence
 
 Return response in this exact JSON format:
 {
-  "object_name": "identified object name",
-  "shape": "cube|cuboid|cylinder|sphere|irregular",
+  "product_name": "identified product name",
+  "category": "product category",
   "dimensions": {
     "length": number,
-    "width": number,
+    "breadth": number,
     "height": number,
-    "unit": "${unit}"
+    "unit": "cm"
   },
-  "estimated_weight": {
+  "weight": {
     "value": number,
-    "unit": "kg",
+    "unit": "gram",
     "confidence": "low|medium|high"
   },
-  "material": "estimated material type",
   "confidence_level": "low|medium|high",
-  "notes": "any additional observations",
-  "reference_used": "description of reference objects used for scale"
+  "notes": "any additional observations"
 }
 
 Be as accurate as possible with measurements. If uncertain, indicate lower confidence.`;
@@ -162,7 +157,7 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
       }
 
       // Validate parsed result structure
-      if (!parsedResult.dimensions || !parsedResult.object_name) {
+      if (!parsedResult.dimensions || !parsedResult.product_name) {
         return res.status(500).json({
           success: false,
           message: 'Invalid response format from AI',
@@ -174,7 +169,7 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
       await cleanupFile(filePath);
 
       // Log successful prediction for analytics
-      console.log(`Dimension prediction by user ${req.user._id}: ${parsedResult.object_name}`);
+      console.log(`Dimension prediction by user ${req.user._id}: ${parsedResult.product_name}`);
 
       res.status(200).json({
         success: true,
@@ -192,7 +187,7 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
 
     } catch (error) {
       console.error('Error in dimension prediction:', error);
-      
+
       // Clean up file in case of error
       if (filePath) {
         await cleanupFile(filePath);
@@ -220,6 +215,7 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
     }
   }
 );
+// ...existing code...
 
 // Get prediction history for user
 router.get('/prediction-history',
@@ -227,7 +223,7 @@ router.get('/prediction-history',
   async (req, res) => {
     try {
       const { page = 1, limit = 10 } = req.query;
-      
+
       // In a real app, you'd store predictions in database
       // For now, return mock data structure
       res.status(200).json({
