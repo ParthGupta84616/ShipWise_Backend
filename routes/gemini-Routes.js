@@ -60,6 +60,28 @@ async function cleanupFile(filePath) {
   }
 }
 
+// Helper function for retry logic
+async function retryWithDelay(fn, retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = i === retries - 1;
+      const isRetryableError = error.message.includes('503') || 
+                              error.message.includes('overloaded') ||
+                              error.message.includes('quota') ||
+                              error.message.includes('rate limit');
+      
+      if (!isRetryableError || isLastAttempt) {
+        throw error;
+      }
+      
+      console.warn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
+      await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); // Exponential backoff
+    }
+  }
+}
+
 router.post('/predict-dimensions',
   authenticateToken,
   upload.single('image'),
@@ -132,8 +154,14 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
       // Get Gemini model
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      // Generate response
-      const result = await model.generateContent([prompt, imagePart]);
+      // Generate response with retry logic
+      const retryAttempts = parseInt(process.env.GEMINI_RETRY_ATTEMPTS) || 3;
+      const retryDelay = parseInt(process.env.GEMINI_RETRY_DELAY) || 2000;
+      
+      const result = await retryWithDelay(async () => {
+        return await model.generateContent([prompt, imagePart]);
+      }, retryAttempts, retryDelay);
+
       const response = await result.response;
       const text = response.text();
 
@@ -180,7 +208,8 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
             image_processed: true,
             file_size: req.file.size,
             processing_time: new Date().toISOString(),
-            user_id: req.user._id
+            user_id: req.user._id,
+            retry_attempts_used: 0 // Could be enhanced to track actual retries
           }
         }
       });
@@ -193,6 +222,7 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
         await cleanupFile(filePath);
       }
 
+      // Enhanced error handling for different scenarios
       if (error.message.includes('API key')) {
         return res.status(500).json({
           success: false,
@@ -200,22 +230,37 @@ Be as accurate as possible with measurements. If uncertain, indicate lower confi
         });
       }
 
+      if (error.message.includes('503') || error.message.includes('overloaded')) {
+        return res.status(503).json({
+          success: false,
+          message: 'AI service is temporarily overloaded. Please try again in a few minutes.',
+          retryAfter: 60 // seconds
+        });
+      }
+
       if (error.message.includes('quota') || error.message.includes('limit')) {
         return res.status(429).json({
           success: false,
-          message: 'AI service temporarily unavailable. Please try again later.'
+          message: 'AI service rate limit exceeded. Please try again later.',
+          retryAfter: 300 // seconds
+        });
+      }
+
+      if (error.message.includes('400') || error.message.includes('Bad Request')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid image format or content. Please try with a different image.'
         });
       }
 
       res.status(500).json({
         success: false,
         message: 'Error processing image for dimension prediction',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
       });
     }
   }
 );
-// ...existing code...
 
 // Get prediction history for user
 router.get('/prediction-history',

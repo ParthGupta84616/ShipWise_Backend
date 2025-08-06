@@ -52,7 +52,7 @@ exports.registerController = async (req, res) => {
     const activationToken = crypto.randomBytes(32).toString('hex');
     const activationTokenExpiry = new Date(Date.now() + 60 * 60 * 1000 * 24 * 30); // 30 days
 
-    // Create user
+    // Create user - SET isActive to false during registration
     const newUser = new User({
       name: name.trim(),
       email: email.toLowerCase(),
@@ -60,7 +60,8 @@ exports.registerController = async (req, res) => {
       phone,
       activationToken,
       activationTokenExpiry,
-      isActive: false
+      isActive: false,  // Set to false during registration
+      emailVerified: false
     });
 
     await newUser.save();
@@ -120,8 +121,9 @@ exports.activationController = async (req, res) => {
       });
     }
 
-    // Activate user
+    // Activate user - SET BOTH emailVerified AND isActive to true
     user.emailVerified = true;
+    user.isActive = true;  // IMPORTANT: Activate the user account
     user.activationToken = undefined;
     user.activationTokenExpiry = undefined;
     await user.save();
@@ -156,7 +158,7 @@ exports.signinController = async (req, res) => {
 
     const { email, password, deviceInfo } = req.body;
 
-    // Find user
+    // Find user - check both emailVerified AND isActive
     const user = await User.findOne({
       email: email.toLowerCase()
     });
@@ -172,6 +174,13 @@ exports.signinController = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Account not activated. Please verify your email before logging in."
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is deactivated. Please contact support."
       });
     }
 
@@ -220,19 +229,28 @@ exports.signinController = async (req, res) => {
   }
 };
 
-// Refresh token controller
+// Refresh token controller - FIXED
 exports.refreshTokenController = async (req, res) => {
   try {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message: "Refresh token is required"
       });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch (jwtError) {
+      console.error("JWT verification error:", jwtError.message);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired refresh token"
+      });
+    }
 
     if (decoded.type !== 'refresh') {
       return res.status(401).json({
@@ -242,10 +260,24 @@ exports.refreshTokenController = async (req, res) => {
     }
 
     const user = await User.findById(decoded._id);
-    if (!user || !user.isActive) {
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: "User not found or inactive"
+        message: "User not found"
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: "User account is inactive"
+      });
+    }
+
+    if (!user.emailVerified) {
+      return res.status(401).json({
+        success: false,
+        message: "User email not verified"
       });
     }
 

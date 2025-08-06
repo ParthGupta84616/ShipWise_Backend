@@ -45,7 +45,6 @@ router.get('/activation/:token', activationController);
 
 router.post('/refresh-token', 
     sanitizeInput,
-    validateRefreshToken, 
     refreshTokenController
 );
 

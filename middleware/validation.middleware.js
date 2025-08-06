@@ -107,12 +107,12 @@ exports.validateToken = [
     .withMessage('Invalid token format')
 ];
 
-// Refresh token validation
+// Refresh token validation - FIXED
 exports.validateRefreshToken = [
   body('refreshToken')
     .notEmpty()
     .withMessage('Refresh token is required')
-    .isJWT()
+    .isLength({ min: 10 })
     .withMessage('Invalid refresh token format')
 ];
 

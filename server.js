@@ -20,7 +20,36 @@ connectDB();
 app.use(helmet()); // Set various HTTP headers for security
 app.use(compression()); // Compress responses
 
-// Rate limiting
+// Block access to .git and other sensitive paths
+app.use((req, res, next) => {
+  const blockedPaths = [
+    '/.git',
+    '/.env',
+    '/config',
+    '/.gitignore',
+    '/package.json',
+    '/node_modules'
+  ];
+  
+  if (blockedPaths.some(path => req.url.startsWith(path))) {
+    return res.status(404).json({
+      success: false,
+      message: 'Not found'
+    });
+  }
+  next();
+});
+
+// Rate limiting with different limits for different endpoints
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit AI endpoints to 5 requests per windowMs
+  message: {
+    success: false,
+    message: "Too many AI requests from this IP, please try again later.",
+  },
+});
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
@@ -29,6 +58,9 @@ const limiter = rateLimit({
     message: "Too many requests from this IP, please try again later.",
   },
 });
+
+// Apply strict rate limiting to AI endpoints
+app.use('/api/ai', strictLimiter);
 app.use(limiter);
 
 // Body parsing middleware with size limits
@@ -103,16 +135,45 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// Global error handling middleware
+// Enhanced global error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err.stack);
+  // Log error details for debugging
+  console.error("Unhandled error:", {
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
+
+  // Handle specific error types
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: "Validation error",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid ID format"
+    });
+  }
+
+  if (err.code === 11000) {
+    return res.status(409).json({
+      success: false,
+      message: "Duplicate entry"
+    });
+  }
 
   res.status(err.status || 500).json({
     success: false,
-    message:
-      process.env.NODE_ENV === "development"
-        ? err.message
-        : "Internal server error",
+    message: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 });
